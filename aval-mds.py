@@ -4,7 +4,7 @@
 #   python aval-mds.py --org unb-mds --since 2024-08-01 --out saida.xlsx --workers 8 --debug-auth --openai-key YOUR_KEY
 #   python aval-mds.py --org unb-mds --since 2024-08-01 --include-new-repos --out saida.xlsx  # inclui repos criados desde a data
 #   ou definir OPENAI_API_KEY como variável de ambiente
-
+from config import get_settings, resolve_credentials
 import argparse, datetime as dt, re, math, statistics, os, time, sys, json
 from collections import defaultdict, Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -764,16 +764,27 @@ def debug_auth_or_die(gh: Github, org_name: str, debug: bool):
 
 def main():
     args = parse_args()
-    # Load .env if available (before reading env vars)
-    if 'load_dotenv' in globals() and DOTENV_AVAILABLE:
-        load_dotenv()
-    token = (args.token or os.getenv("GH_TOKEN", "")).strip()
-    gh = Github(token, per_page=50) if token else Github(per_page=50)
-    
-    # Initialize AI analyzer
+
+    # Lê .env + ambiente usando config.py
+    settings = get_settings()
+    gh_token, openai_key = resolve_credentials(
+        cli_token=args.token,
+        cli_openai=args.openai_key,
+        settings=settings,
+    )
+
+    # Client GitHub sempre autenticado
+    gh = Github(gh_token, per_page=50)
+
+    # Initialize AI analyzer (usa chave resolvida)
     ai_analyzer = None
     if not args.disable_ai:
-        ai_analyzer = AgileQualityAnalyzer(args.openai_key)
+        ai_analyzer = AgileQualityAnalyzer(openai_key)
+        if ai_analyzer.enabled:
+            print("[ai] AI-powered quality analysis enabled")
+        else:
+            print("[ai] AI analysis disabled (no API key or initialization failed)")
+
         if ai_analyzer.enabled:
             print("[ai] AI-powered quality analysis enabled")
         else:
